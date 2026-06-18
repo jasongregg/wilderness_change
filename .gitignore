@@ -6,3 +6,6 @@ scripts/script_2.R
 scripts/script_3.R
 scripts/script_4.R
 scripts/filter_all_sp_range.maps.R
+.Rhistory
+.RData
+.DS_Store
