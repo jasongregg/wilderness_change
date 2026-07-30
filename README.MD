@@ -33,6 +33,9 @@ Includes draft manuscript in markdown.
 ######LAB NOTEBOOK########
 #####
 
+***July 30***
+Created a quarto file to share writing and figures
+
 **March 6**
 I matched extents of ecoregion and wilderness rasters to NLCD data.
 
