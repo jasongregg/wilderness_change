@@ -1,7 +1,7 @@
 #Jason Gregg
 #July 2026
 
-#Script_6.R is for analysis and figuremaking based on previous scripts
+#script_figures.R is for analysis and figuremaking based on scripts 1 and 2
 
 #it uses csv files of pixel counts for two years nlcd data: 1989 and 2024 generated in Script_5.R
 
@@ -135,4 +135,10 @@ landcover_change_table
 
 ###Based on the wilderness_pixcounts csv, Table 2 ranks the wilderness areas 
 #that have experienced the most pixel turnover and creates a simple bar chart
+
+
+###Figure 2
+
+# This will show colored bubbles shaded between green and red depending on 
+#and sized for the size of the wilderness
 

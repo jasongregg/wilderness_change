@@ -1,7 +1,6 @@
 data/
 outputs/wilderness_raster_outputs
 outputs/csv_outputs
-scripts/script_1.R
 scripts/script_2.R
 scripts/script_3.R
 scripts/script_4.R

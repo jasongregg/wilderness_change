@@ -1,13 +1,18 @@
 ##Jason Gregg
 ##June 16th, 2026
 
-###This is the final working script that loads, checks, and rasterizes spatial data and then uses a block-based approach
+###This is the final working script 
+
+##June 2026: Part 1 loads, checks, and rasterizes spatial data and then uses a block-based approach
 ### and terra extract to conduct pixel counts for 1989 and 2024 at the wilderness, state, and ecoregion scales.
 
 ### Resulting CSV files for state, ecoregion, and wilderness level NLCD change are then appended so they contain names, not just codes
 
 #It includes all steps except some pre-processing of spatial data, including clipping ecoregion and wilderness areas
 #and merging and cleaning wilderness areas with multiple polygons
+
+#July 2026: Part 2 runs a loop that clips rasters of each wilderness for 1989 and 2024, then runs another loop
+#to calculate pixel transitions. This 
 
 library(terra)
 library(sf)
@@ -92,7 +97,6 @@ terra::writeRaster(l2ecoreg_r, "data/rasterized/l2ecoregion_raster.tiff")
 wilderness_r_touches <- rasterize(wilderness, nlcd2024, field = "WID", touches = TRUE)
 #write raster
 terra::writeRaster(wilderness_r_touches, "data/rasterized/wilderness_raster_touches.tiff")
-
 
 
 
@@ -352,6 +356,334 @@ ecoreg_append <- ecoreg_append[, c(1, ncol(ecoreg_append), 2:(ncol(ecoreg_append
 #write the appended csv for analysis and figure making.
 
 write_csv(ecoreg_append, "outputs/appended_csv/l2ecoreg_append.csv")
+
+
+
+###Part 2, pixel transitions
+###pairs of wilderness NLCD rasters were already created and saved based on using wilderness polygons
+#as a mask. Lets see how these compare with out wilderness touches raster. Trying to redo this using raster
+#on raster mask and clip wasnt working.
+
+
+
+
+
+
+
+
+
+
+
+
+# Path to the parent folder containing the 700 subfolders
+parent_dir <- "outputs/
+
+# List all subfolders
+folders <- list.dirs(parent_dir, full.names = TRUE, recursive = FALSE)
+
+for (f in folders) {
+  
+  # --- Identify the two rasters ---
+  ras_files <- list.files(f, pattern = "\\.tif$", full.names = TRUE)
+  
+  if (length(ras_files) != 2) {
+    message("Skipping folder ", f, ": does not contain exactly two rasters")
+    next
+  }
+  
+  # Load rasters
+  r1 <- rast(ras_files[1])
+  r2 <- rast(ras_files[2])
+  
+  # --- Stack them ---
+  rs <- c(r1, r2)
+  names(rs) <- c("year1", "year2")
+  
+  # --- Extract pixel pairs ---
+  vals <- as.data.frame(terra::values(rs))
+  vals <- na.omit(vals)  # remove NA pairs
+  
+  # --- Create pixel transition pairs ---
+  vals$transition <- paste(vals$year1, vals$year2, sep = "_")
+  
+  # Save pixel-wise table
+  write.csv(vals, file.path(f, "transition_table.csv"), row.names = FALSE)
+  
+  # --- Create transition matrix ---
+  tm <- vals %>%
+    count(year1, year2) %>%
+    tidyr::pivot_wider(
+      names_from = year2,
+      values_from = n,
+      values_fill = 0
+    )
+  
+  # Save transition matrix
+  write.csv(tm, file.path(f, "transition_matrix.csv"), row.names = FALSE)
+  
+  message("Processed: ", f)
+}
+
+###seems to work, now aggregate them
+
+# Read all transition matrices
+tm_files <- list.files(parent_dir,
+                       pattern = "transition_matrix.csv$",
+                       full.names = TRUE,
+                       recursive = TRUE)
+
+# Read and bind all matrices
+all_tm <- purrr::map_df(tm_files, ~ read.csv(.x))
+
+# Sum counts across all folders
+global_tm <- all_tm %>%
+  group_by(year1) %>%
+  summarise(across(everything(), sum, na.rm = TRUE))
+
+# Save global transition matrix
+write.csv(global_tm, file.path(parent_dir, "GLOBAL_transition_matrix.csv"), row.names = FALSE)
+
+
+##convert the matrix for sankey
+
+long_tm <- global_tm %>%
+  pivot_longer(
+    cols = -year1,
+    names_to = "year2",
+    values_to = "count"
+  ) %>%
+  filter(count > 0)
+
+
+#make nodes and links
+
+# Node list
+nodes <- data.frame(name = sort(unique(c(long_tm$year1, long_tm$year2))))
+
+# Link list
+links <- long_tm %>%
+  mutate(
+    source = match(year1, nodes$name) - 1,
+    target = match(year2, nodes$name) - 1,
+    value  = count
+  )
+
+
+#assign the classes
+class_names <- c(
+  "11" = "Open Water",
+  "12" = "Perennial Ice/Snow",
+  "21" = "Developed, Open Space",
+  "22" = "Developed, Low Intensity",
+  "23" = "Developed, Medium Intensity",
+  "24" = "Developed, High Intensity",
+  "31" = "Barren Land (Rock/Sand/Clay",
+  "42" = "Evergreen Forest",
+  "41" = "Decidous Forest",
+  "43" = "Mixed Forest",
+  "52" = "Shrub/Scrub",
+  "71" = "Grassland/Herbaceous",
+  "81" = "Pasture/Hay",
+  "82" = "Cultivated Crops",
+  "90" = "Woody Wetlands",
+  "95" = "Emergent Herbaceous Wetlands"
+  
+)
+
+
+nodes$name <- class_names[nodes$name]
+#make the diagram
+sankeyNetwork(
+  Links = links,
+  Nodes = nodes,
+  Source = "source",
+  Target = "target",
+  Value  = "value",
+  NodeID = "name",
+  fontSize = 14,
+  nodeWidth = 30
+)
+
+
+
+##########The above works but
+##########try alluvial plot instead
+
+
+matrix <- read.csv("outputs/loop_output_nov11/GLOBAL_transition_matrix.csv")
+
+transition_long <- matrix %>%
+  pivot_longer(
+    cols = -1,
+    names_to = "to",
+    values_to = "value"
+  ) %>%
+  rename(from = 1) %>%
+  filter(value > 0)   # remove zeros if desired
+
+
+# NLCD 2016 codes and class names
+nlcd_lookup <- data.frame(
+  code = c(11, 12, 21, 22, 23, 24, 31, 41, 42, 43, 52, 71, 81, 82, 90, 95),
+  class = c(
+    "Open Water", "Perennial Ice/Snow", "Developed, Open Space", "Developed, Low Intensity",
+    "Developed, Medium Intensity", "Developed, High Intensity",
+    "Barren Land", "Deciduous Forest", "Evergreen Forest",
+    "Mixed Forest", "Shrub/Scrub", "Grassland/Herbaceous",
+    "Pasture/Hay", "Cultivated Crops", "Woody Wetlands", "Emergent Herbaceous Wetlands"
+  )
+)
+
+
+###get rid of the x in the to column
+
+transition_long <- transition_long %>%
+  mutate(to = as.numeric(gsub("^X", "", to)))
+
+###
+transition_long <- transition_long %>%
+  left_join(nlcd_lookup, by = c("from" = "code")) %>%
+  rename(from_class = class) %>%
+  left_join(nlcd_lookup, by = c("to" = "code")) %>%
+  rename(to_class = class)
+
+### apply NLCD class names and colors
+
+nlcd_lookup <- data.frame(
+  code = c(11,12,21,22,23,24,31,41,42,43,52,71,81,82,90,95),
+  class = c(
+    "Open Water", "Perennial Ice/Snow", "Developed, Open Space", "Developed, Low Intensity",
+    "Developed, Medium Intensity", "Developed, High Intensity", "Barren Land",
+    "Deciduous Forest", "Evergreen Forest", "Mixed Forest", "Shrub/Scrub",
+    "Grassland/Herbaceous", "Pasture/Hay", "Cultivated Crops", "Woody Wetlands",
+    "Emergent Herbaceous Wetlands"
+  )
+)
+
+nlcd_colors <- c(
+  "Open Water" = "#466b9f",
+  "Perennial Ice/Snow" = "#F5F5F5",
+  "Developed, Open Space" = "#dec5c5",
+  "Developed, Low Intensity" = "#d99282",
+  "Developed, Medium Intensity" = "#eb0000",
+  "Developed, High Intensity" = "#ab0000",
+  "Barren Land" = "#b3ac9f",
+  "Deciduous Forest" = "#68ab5f",
+  "Evergreen Forest" = "#1c5f2c",
+  "Mixed Forest" = "#b5c58f",
+  "Shrub/Scrub" = "#a68c30",
+  "Grassland/Herbaceous" = "#ccba7c",
+  "Pasture/Hay" = "#e2e2c5",
+  "Cultivated Crops" = "#d0e4af",
+  "Woody Wetlands" = "#87c0cd",
+  "Emergent Herbaceous Wetlands" = "#abd9e9"
+)
+
+transition_long <- transition_long %>%
+  mutate(
+    from_class = factor(from_class, levels = names(nlcd_colors)),
+    to_class   = factor(to_class, levels = names(nlcd_colors))
+  )
+
+
+plot1 <- ggplot(transition_long,
+                aes(axis1 = from_class, axis2 = to_class, y = value)) +
+  geom_alluvium(aes(fill = from_class), width = 1/12) +
+  geom_stratum(width = 1/8, fill = "grey80", color = "black") +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +
+  scale_x_discrete(limits = c("1989", "2024"), expand = c(.1, .1)) +
+  scale_fill_manual(values = nlcd_colors) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank()
+  ) +
+  labs(
+    title = "NLCD Land Cover Transitions",
+    y = NULL,  # removes y-axis label
+    x = ""
+  )
+
+ggsave( "plot1.png", plot = plot1, width = 16, height = 40, dpi = 300, limitsize = FALSE)
+
+
+
+
+######## STEP 2
+
+#######this worked, but lets filter the smallest classes as they are not showing anything.
+# should we lump them or get rid of them entirely?
+
+##best way to figure this out is to run pland on all wildernesses and see the percentages of the bottom lowest land classes.
+# for both years.
+# how big of a lump is this?
+
+
+# Calculate total transitions per class (from + to)
+class_totals <- transition_long %>%
+  mutate(class = from_class) %>%
+  group_by(class) %>%
+  summarise(total_from = sum(value)) %>%
+  full_join(
+    transition_long %>%
+      mutate(class = to_class) %>%
+      group_by(class) %>%
+      summarise(total_to = sum(value)),
+    by = "class"
+  ) %>%
+  mutate(total = total_from + total_to) %>%
+  arrange(desc(total))
+
+# Select the top 10 classes
+top10_classes <- class_totals$class[1:10]
+top10_classes
+
+####filter
+transition_top10 <- transition_long %>%
+  filter(from_class %in% top10_classes & to_class %in% top10_classes)
+
+
+
+##plot
+plot1 <- ggplot(transition_top10,
+                aes(axis1 = from_class, axis2 = to_class, y = value)) +
+  geom_alluvium(aes(fill = from_class), width = 1/12) +
+  geom_stratum(width = 1/8, fill = "grey80", color = "black") +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +
+  
+  # Make the year labels larger
+  scale_x_discrete(limits = c("1989", "2024"), expand = c(.1, .1)) +
+  
+  scale_fill_manual(values = nlcd_colors) +
+  
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    
+    # Larger year labels
+    axis.text.x = element_text(size = 18, face = "bold"),
+    
+    # Larger, centered title
+    plot.title = element_text(size = 24, face = "bold", hjust = 0.5)
+  ) +
+  
+  labs(
+    title = "CONUS wilderness land cover transitions 
+                (Top 10 Classes)",
+    y = NULL,
+    x = ""
+  )
+
+
+ggsave("plot1_top10.png", plot = plot1,
+       width = 12, height = 22, dpi = 300, limitsize = FALSE)
+
+
 
 
 

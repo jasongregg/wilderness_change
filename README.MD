@@ -3,12 +3,12 @@
 
 **Scripts*
 
-script_1.R does some basic data cleaning and prep.
+script_1.R does basic data cleaning and prep.
 
-script_2.R does the majority of the sub-sampling and creates the necessary csv tables for the rest
-of the analysis.
+script_5.R is most of the analysis. It creates csv tables using terra:freq and a block-based approach
+It also creates wilderness rasters and does
 
-script_3.R generates all the plots and figures, using the previously generated csv outputs.
+script_figures.R generates all the plots and figures, using the previously generated csv outputs.
 
 
 **Data**
