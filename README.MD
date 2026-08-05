@@ -6,7 +6,7 @@
 script_1.R does basic data cleaning and prep.
 
 script_5.R is most of the analysis. It creates csv tables using terra:freq and a block-based approach
-It also creates wilderness rasters and does
+It also creates wilderness rasters and will do pixel transition analysis (pending)
 
 script_figures.R generates all the plots and figures, using the previously generated csv outputs.
 
@@ -34,7 +34,8 @@ Includes draft manuscript in markdown.
 #####
 
 ***July 30***
-Created a quarto file to share writing and figures
+Created a quarto file to share writing and figures. 
+Created some figures
 
 **March 6**
 I matched extents of ecoregion and wilderness rasters to NLCD data.
