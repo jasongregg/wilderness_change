@@ -17,15 +17,13 @@ Includes all geo-spatial data used for analysis. **Large NLCD data  are not uplo
 
 **Outputs**
 
-Includes 2025 outputs generated during original analysis.
+Includes outputs generated during original and current analysis
 
 Includes all generated .csv files and draft manuscript paper plots. **clipped wilderness rasters are not uploaded, large file size**
 
 Includes suppl. material tables based on csv files.
 
 Includes draft manuscript in markdown.
-
-
 
 
 
@@ -158,9 +156,39 @@ a draft manuscript
 
 raster data too large for github.
 
+****August 20th****
+I got the pixel transition CSVs, now ready to rank the sites by percent changed (and check against previos outputs)
+and also add sankey chart.
+
+TO DO:
+check out your touches=true raster and see how it compares with the previously created wilderness rasters created by clipping using shapefiles
+calculate % difference for each wilderness area.
+
+**Sept 26**
+Need to get it in order for next week.
+
+Made a map of wilderness centroids ontop of l2 ecoregion, this looks good. 14 wilderness centroids were not in an ecoregion.
+In Script 5, I troubleshooted these and found they were all associated with coastal wildernesses. To fix this, I assigned them to the nearest ecoregion
+which seems defensible.
+
+**Sept 27**
+While working on a table that listed the amount of wilderness acreage per ecoregion, discovered that there were 2.8 million pixels 
+that contained NLCD data and Wilderness data but not ecoregion data. This is likely related to the issue of NA wilderness centroids yesterday.
+The options are to either discard this (about ~ 1% of wilderness area) or assign it to the nearest ecoregion.
+
+To troubleshoot, I generated a pixel table that shows how many pixels are missing for each raster combination
+
+I may just discard those pixels for now. It seems reasonable and unlikely to effect forest loss calc. as long as I track and report what happened.
+with each of the terra extracts.
+
+**TO DO**
+Make a heat map of the wildernesses based on the centroids, with underlying ecoregion colors and overlying red.
+Finish your tables. These will be essential for your results.
+Finish the series of slope graphs for the suppl. material. These are good.
+
+Once you do this, get it on google docs and send to Ethan and Travis at least by weds morning
+
+**Sept 30**
+Sent Ethan and Travis google docs version of manuscript and updated Github
 
 
-
-
-
-# wilderness_change

@@ -103,7 +103,7 @@ terra::writeRaster(wilderness_r_touches, "data/rasterized/wilderness_raster_touc
 ###Step 4: block-based approach using terra::extract on your wilderness raster to create pixel counts in 
 #1989, 2024 for wilderness areas
 
-wilderness_r <- rast("data/raster_stack/wilderness_raster_touches.tiff")
+wilderness_r <- rast("data/rasterized/wilderness_raster_touches.tiff")
 
 #set output placeholder
 output_csv <- "nlcd_wilderness_pixel_counts_touches.csv"
@@ -172,7 +172,7 @@ message("Wilderness areas found: ", uniqueN(all_counts$wilderness_id))
 ###again using wilderness touches raster
 
 #load ecoregion raster
-l2ecoreg_r <- rast("data/raster_stack/l2ecoregion_raster.tiff")
+l2ecoreg_r <- rast("data/rasterized/l2ecoregion_raster.tiff")
 
 #placeholder output
 output_csv  <- "ecoreg_wilderness_touches_pixel_counts2.csv"
@@ -236,6 +236,179 @@ fwrite(all_counts, output_csv)
 message("Done! Saved to: ", output_csv)
 message("Rows: ", nrow(all_counts))
 message("Ecoregions found: ", uniqueN(all_counts$ecoregion))
+
+###Quick check to see whether, with the code above (terra extract) I got pixels from all wilderness areas, even the coastal ones,
+#e.g. florida.
+
+
+##############
+
+# -----------------------------
+# Diagnostic: NLCD x Wilderness x Ecoregion
+# -----------------------------
+
+diagnostic_counts <- data.table(
+  NLCD = character(),
+  Wilderness = character(),
+  Ecoregion = character(),
+  pixel_count = integer()
+)
+
+readStart(nlcd1989)
+readStart(wilderness_r)
+readStart(l2ecoreg_r)
+
+for (i in seq_len(bs$n)) {
+  
+  nlcd_b <- readValues(
+    nlcd1989,
+    row = bs$row[i],
+    nrows = bs$nrows[i]
+  )
+  
+  wld_b <- readValues(
+    wilderness_r,
+    row = bs$row[i],
+    nrows = bs$nrows[i]
+  )
+  
+  eco_b <- readValues(
+    l2ecoreg_r,
+    row = bs$row[i],
+    nrows = bs$nrows[i]
+  )
+  
+  # Classify each pixel as Present or NA
+  block_dt <- data.table(
+    NLCD = ifelse(is.na(nlcd_b), "NA", "Present"),
+    
+    Wilderness = ifelse(
+      is.na(wld_b) | wld_b == 0,
+      "NA",
+      "Present"
+    ),
+    
+    Ecoregion = ifelse(
+      is.na(eco_b),
+      "NA",
+      "Present"
+    )
+  )
+  
+  # Count combinations within this block
+  block_counts <- block_dt[
+    ,
+    .(pixel_count = .N),
+    by = .(NLCD, Wilderness, Ecoregion)
+  ]
+  
+  diagnostic_counts <- rbind(
+    diagnostic_counts,
+    block_counts
+  )
+  
+  if (i %% 10 == 0) {
+    message("Processed block ", i, "/", bs$n)
+  }
+}
+
+readStop(nlcd1989)
+readStop(wilderness_r)
+readStop(l2ecoreg_r)
+
+
+# Combine counts from all blocks
+diagnostic_counts <- diagnostic_counts[
+  ,
+  .(pixel_count = sum(pixel_count)),
+  by = .(NLCD, Wilderness, Ecoregion)
+]
+
+
+# Sort the table
+setorder(
+  diagnostic_counts,
+  NLCD,
+  Wilderness,
+  Ecoregion
+)
+
+
+# View ALL combinations
+diagnostic_counts
+
+
+#write diagnostic counts table for future reference.
+write_excel_csv(
+  diagnostic_counts,
+  file.path("outputs/appended_csv/raster_comparison_pixel_summary.csv")
+  )
+
+#continuing the diagnostic, lets locate where these NA values are coming from
+# Use the same block structure as before
+bs <- blocks(nlcd1989, n = 10)
+
+# Store the number of problematic pixels in each block
+missing_eco_by_block <- data.table(
+  block = seq_len(bs$n),
+  row = bs$row,
+  nrows = bs$nrows,
+  missing_eco_pixels = 0
+)
+
+readStart(nlcd1989)
+readStart(wilderness_r)
+readStart(l2ecoreg_r)
+
+for (i in seq_len(bs$n)) {
+  
+  nlcd_b <- readValues(
+    nlcd1989,
+    row = bs$row[i],
+    nrows = bs$nrows[i]
+  )
+  
+  wld_b <- readValues(
+    wilderness_r,
+    row = bs$row[i],
+    nrows = bs$nrows[i]
+  )
+  
+  eco_b <- readValues(
+    l2ecoreg_r,
+    row = bs$row[i],
+    nrows = bs$nrows[i]
+  )
+  
+  # Wilderness + NLCD present, but ecoregion missing
+  problem_idx <- !is.na(nlcd_b) &
+    !is.na(wld_b) & wld_b != 0 &
+    is.na(eco_b)
+  
+  missing_eco_by_block[
+    block == i,
+    missing_eco_pixels := sum(problem_idx)
+  ]
+  
+  message(
+    "Block ", i, "/", bs$n,
+    " — missing ecoregion pixels: ",
+    sum(problem_idx)
+  )
+}
+
+readStop(nlcd1989)
+readStop(wilderness_r)
+readStop(l2ecoreg_r)
+
+missing_eco_by_block
+###this is interesting but just shows NA values are in a different blocks.
+
+
+
+
+
+
 
 
 
@@ -359,24 +532,19 @@ write_csv(ecoreg_append, "outputs/appended_csv/l2ecoreg_append.csv")
 
 
 
+
+
+
+
 ###Part 2, pixel transitions
 ###pairs of wilderness NLCD rasters were already created and saved based on using wilderness polygons
-#as a mask. Lets see how these compare with out wilderness touches raster. Trying to redo this using raster
-#on raster mask and clip wasnt working.
+#as a mask.
 
-
-
-
-
-
-
-
-
-
+#Trying to redo this using raster on raster mask and clip wasnt working, so lets use what we have and compare difference
 
 
 # Path to the parent folder containing the 700 subfolders
-parent_dir <- "outputs/
+parent_dir <- "outputs/wilderness_raster_outputs/"
 
 # List all subfolders
 folders <- list.dirs(parent_dir, full.names = TRUE, recursive = FALSE)
@@ -423,6 +591,177 @@ for (f in folders) {
   
   message("Processed: ", f)
 }
+
+
+
+
+#now create a master csv that lists %pixels that have transitioned for each wilderness
+
+
+
+parent_dir <- "outputs/wilderness_raster_outputs/"
+
+folders <- list.dirs(
+  parent_dir,
+  full.names = TRUE,
+  recursive = FALSE
+)
+
+results <- list()
+
+for (f in folders) {
+  
+  transition_file <- file.path(f, "transition_table.csv")
+  
+  if (!file.exists(transition_file)) {
+    message("Skipping: ", basename(f))
+    next
+  }
+  
+  vals <- read_csv(
+    transition_file,
+    show_col_types = FALSE
+  )
+  
+  # Remove any rows with missing values
+  vals <- vals %>%
+    filter(
+      !is.na(year1),
+      !is.na(year2)
+    )
+  
+  total_pixels <- nrow(vals)
+  
+  pixels_stayed <- sum(
+    vals$year1 == vals$year2
+  )
+  
+  pixels_transitioned <- sum(
+    vals$year1 != vals$year2
+  )
+  
+  percent_transitioned <-
+    pixels_transitioned / total_pixels * 100
+  
+  results[[length(results) + 1]] <- data.frame(
+    wilderness_area = basename(f),
+    total_pixels = total_pixels,
+    pixels_stayed = pixels_stayed,
+    pixels_transitioned = pixels_transitioned,
+    percent_transitioned = round(
+      percent_transitioned,
+      2
+    )
+  )
+}
+
+wilderness_summary <- bind_rows(results)
+
+write_excel_csv(
+  wilderness_summary,
+  file.path(
+    parent_dir,
+    "wilderness_transition_summary.csv"
+  )
+)
+
+print(wilderness_summary)
+
+
+
+
+
+
+
+
+### now another csv that includes the detailed transitions so that you can make a sanky flow chart
+transition_results <- list()
+
+for (f in folders) {
+  
+  transition_file <- file.path(
+    f,
+    "transition_table.csv"
+  )
+  
+  if (!file.exists(transition_file)) {
+    next
+  }
+  
+  vals <- read_csv(
+    transition_file,
+    show_col_types = FALSE
+  )
+  
+  vals <- vals %>%
+    filter(
+      !is.na(year1),
+      !is.na(year2)
+    )
+  
+  total_pixels <- nrow(vals)
+  
+  # Count every unique transition
+  transition_counts <- vals %>%
+    count(
+      year1,
+      year2,
+      name = "pixels"
+    ) %>%
+    mutate(
+      wilderness_area = basename(f),
+      transition = paste0(
+        year1,
+        "_to_",
+        year2
+      ),
+      percent_of_total =
+        round(
+          pixels / total_pixels * 100,
+          2
+        )
+    ) %>%
+    select(
+      wilderness_area,
+      from_category = year1,
+      to_category = year2,
+      transition,
+      pixels,
+      percent_of_total
+    )
+  
+  transition_results[[length(transition_results) + 1]] <-
+    transition_counts
+}
+
+all_transitions <- bind_rows(
+  transition_results
+)
+
+write_excel_csv(
+  all_transitions,
+  file.path(
+    parent_dir,
+    "wilderness_transition_details.csv"
+  )
+)
+
+print(all_transitions)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ###seems to work, now aggregate them
 
